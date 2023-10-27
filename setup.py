@@ -76,7 +76,7 @@ setup(
     python_requires='>=3.10.4',
     install_requires=[
         'hio>=0.6.9',
-        'keri @ git+https://git@github.com/WebOfTrust/keripy.git',
+        'keri @ git+https://git@github.com/WebOfTrust/keripy.git@4185296affb2348d19af6009be04f682a3e19360',
         'mnemonic>=0.20',
         'multicommand>=1.0.0',
         'falcon>=3.1.0',
