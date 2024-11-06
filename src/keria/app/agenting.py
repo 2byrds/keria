@@ -1042,8 +1042,9 @@ class KeyEventCollectionEnd:
         pre = req.params.get("pre")
         preb = pre.encode("utf-8")
         events = []
-        for fn, dig in agent.hby.db.getFelItemPreIter(preb, fn=0):
-            if not (raw := agent.hby.db.cloneEvtMsg(pre=preb, fn=fn, dig=dig)):
+        for fel_item in agent.hby.db.getFelItemPreIter(preb, fn=0):
+            sn, dig = fel_item
+            if not (raw := agent.hby.db.cloneEvtMsg(pre=preb, fn=sn, dig=dig)):
                 raise falcon.HTTPInternalServerError(f"Missing event for dig={dig}.")
 
             serder = serdering.SerderKERI(raw=bytes(raw))

@@ -15,8 +15,8 @@ from keri.app import habbing
 from keri.app.keeping import Algos
 from keri.core import coring, serdering
 from keri.core.coring import Ilks
-from keri.db import dbing
-from keri.help import ogler
+from keri.db import basing, dbing
+from keri.help import helping, ogler
 from mnemonic import mnemonic
 
 from ..core import longrunning, httping
@@ -805,6 +805,8 @@ class IdentifierResourceEnd:
                 op = self.rotate(agent, name, body)
             elif body.get("ixn") is not None:
                 op = self.interact(agent, name, body)
+            elif body.get("ixn_rollback") is not None:
+                op = self.interact_rollback(agent, name, body)
             elif body.get("submit") is not None:
                 op = self.submit_id(agent, name, body)
             else:
@@ -958,6 +960,87 @@ class IdentifierResourceEnd:
                 metadata=dict(pre=hab.pre, sn=serder.sn),
             )
             return op
+
+        op = agent.monitor.submit(
+            serder.said,
+            longrunning.OpTypes.done,
+            metadata=dict(response=serder.ked),
+        )
+        return op
+    
+    @staticmethod
+    def interact_rollback(agent, name, body):
+        hab = agent.hby.habs[name] if name in agent.hby.habs else agent.hby.habByName(name)
+        if hab is None:
+            raise falcon.HTTPNotFound(title=f"No AID {name} found")
+
+        ixn = body.get("ixn_rollback")
+        if ixn is None:
+            raise falcon.HTTPBadRequest(
+                title="invalid interaction",
+                description=f"required field 'ixn' missing from request",
+            )
+
+        sigs = body.get("sigs")
+        if sigs is None or len(sigs) == 0:
+            raise falcon.HTTPBadRequest(
+                title="invalid interaction",
+                description=f"required field 'sigs' missing from request",
+            )
+
+        # serder = serdering.SerderKERI(sad=ixn)
+        # sigers = [core.Siger(qb64=sig) for sig in sigs]
+
+        if hab.kever.ilk not in (coring.Ilks.ixn,):
+            raise kering.ValidationError(f"only interaction events can be rolled back, top event is "
+                                            f"{hab.kever.ilk}")
+
+        serder = hab.kever.serder
+        dgkey = dbing.dgKey(hab.pre, serder.saidb)
+        wigs = agent.hby.db.getWigs(dgkey)
+
+        if len(wigs) > 0:
+            raise kering.ValidationError(f"top event at sequence number {hab.kever.sn} has been published to "
+                                            f"{len(wigs)} witnesses, unable to rollback.")
+
+        ked = agent.hby.db.states.getDict(keys=serder.pre)
+        pdig = agent.hby.db.getKeLast(dbing.snKey(serder.preb, serder.sn - 1))
+
+        pDgKey = dbing.dgKey(serder.preb, bytes(pdig))  # get message
+        raw = agent.hby.db.getEvt(key=pDgKey)
+        pserder = serdering.SerderKERI(raw=bytes(raw))
+
+        dgkey = dbing.dgKey(serder.preb, serder.saidb)
+        agent.hby.db.delEvt(dgkey)
+        agent.hby.db.wits.rem(keys=dgkey)
+        agent.hby.db.delWigs(dgkey)
+        agent.hby.db.delSigs(dgkey)  # idempotent
+        agent.hby.db.delDts(dgkey)  # idempotent do not change dts if already
+        agent.hby.db.delKes(dbing.snKey(serder.preb, serder.sn))
+
+        seqner = coring.Number(num=serder.sn - 1)
+        fner = coring.Number(numh=ked['f'])
+        fner = coring.Number(num=fner.num - 1)
+
+        # Update the only items in state that will change after rolling back an ixn
+        ked['s'] = seqner.numh
+        ked['et'] = pserder.ked['t']
+        ked['p'] = pserder.ked['p']
+        ked['d'] = pserder.said
+        ked['f'] = fner.numh
+        ked['dt'] = helping.nowIso8601()
+
+        # state = serdering.SerderKERI(sad=ked)  # This is wrong key state is not Serder anymore
+        agent.hby.db.states.pin(keys=hab.pre,
+                            val=helping.datify(basing.KeyStateRecord,
+                                                ked))
+
+        # Refresh all habs to reload this one
+        agent.hby.db.reload()
+        agent.hby.loadHabs()
+
+        print(f"Key event at {hab.kever.sn} rolledback, current state: {hab.kever.serder}")
+        # displaying.printIdentifier(agent.hby, hab.pre)
 
         op = agent.monitor.submit(
             serder.said,

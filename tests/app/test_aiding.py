@@ -785,18 +785,18 @@ def test_identifier_collection_end(helpers):
         keys = [signer.verfer.qb64 for signer in signers]
         ndigs = [coring.Diger(ser=nsigner.verfer.qb64b) for nsigner in nsigners]
 
-        serder = eventing.rotate(keys=keys,
+        rot_ser = eventing.rotate(keys=keys,
                                  pre=pre,
                                  dig=pre,
                                  isith="1",
                                  nsith="1",
                                  ndigs=[diger.qb64 for diger in ndigs])
 
-        sigers = [signer.sign(ser=serder.raw, index=0).qb64 for signer in signers]
+        sigers = [signer.sign(ser=rot_ser.raw, index=0).qb64 for signer in signers]
         prxs = [encrypter.encrypt(prim=signer).qb64 for signer in signers]
         nxts = [encrypter.encrypt(prim=signer).qb64 for signer in nsigners]
 
-        body = {'rot': serder.ked,
+        body = {'rot': rot_ser.ked,
                 'sigs': sigers,
                 'randy': {
                     "prxs": prxs,
@@ -806,7 +806,7 @@ def test_identifier_collection_end(helpers):
                 }
         res = client.simulate_post(path="/identifiers/randy1/events", body=json.dumps(body))
         assert res.status_code == 200
-        assert res.json["response"] == serder.ked
+        assert res.json["response"] == rot_ser.ked
         res = client.simulate_get(path="/identifiers")
         assert res.status_code == 200
         assert len(res.json) == 1
@@ -815,22 +815,37 @@ def test_identifier_collection_end(helpers):
         assert res.status_code == 200
         events = res.json
         assert len(events) == 2
-        assert events[1]['ked'] == serder.ked
+        assert events[1]['ked'] == rot_ser.ked
 
-        serder = eventing.interact(pre=pre, dig=serder.said, sn=len(events), data=[pre])
-        sigers = [signer.sign(ser=serder.raw, index=0).qb64 for signer in signers]
-        body = {'ixn': serder.ked,
+        # Now test interactions
+        ixn_ser = eventing.interact(pre=pre, dig=rot_ser.said, sn=len(events), data=[pre])
+        sigers = [signer.sign(ser=ixn_ser.raw, index=0).qb64 for signer in signers]
+        body = {'ixn': ixn_ser.ked,
                 'sigs': sigers
                 }
         res = client.simulate_post(path="/identifiers/randy1/events", body=json.dumps(body))
         assert res.status_code == 200
-        assert res.json["response"] == serder.ked
+        assert res.json["response"] == ixn_ser.ked
 
         res = client.simulate_get(path=f"/events?pre={pre}")
         assert res.status_code == 200
         events = res.json
         assert len(events) == 3
-        assert events[2]['ked'] == serder.ked
+        assert events[2]['ked'] == ixn_ser.ked
+        
+        # Now test interaction rollback
+        body = {'ixn_rollback': ixn_ser.ked,
+                'sigs': sigers
+                }
+        res = client.simulate_post(path="/identifiers/randy1/events", body=json.dumps(body))
+        assert res.status_code == 200
+        assert res.json["response"] == ixn_ser.ked
+
+        res = client.simulate_get(path=f"/events?pre={pre}")
+        assert res.status_code == 200
+        events = res.json
+        assert len(events) == 2
+        assert events[1]['ked'] == rot_ser.ked
 
         # Bad interactions
         res = client.simulate_post(path="/identifiers/badrandy/events", body=json.dumps(body))
