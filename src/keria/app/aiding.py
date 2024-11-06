@@ -1017,6 +1017,7 @@ class IdentifierResourceEnd:
         agent.hby.db.delSigs(dgkey)  # idempotent
         agent.hby.db.delDts(dgkey)  # idempotent do not change dts if already
         agent.hby.db.delKes(dbing.snKey(serder.preb, serder.sn))
+        agent.hby.db.delFe(dbing.snKey(serder.preb, serder.sn))
 
         seqner = coring.Number(num=serder.sn - 1)
         fner = coring.Number(numh=ked['f'])
