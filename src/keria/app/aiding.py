@@ -805,7 +805,7 @@ class IdentifierResourceEnd:
                 op = self.rotate(agent, name, body)
             elif body.get("ixn") is not None:
                 op = self.interact(agent, name, body)
-            elif body.get("ixn_rollback") is not None:
+            elif body.get("sn_rollback") is not None:
                 op = self.interact_rollback(agent, name, body)
             elif body.get("submit") is not None:
                 op = self.submit_id(agent, name, body)
@@ -974,28 +974,25 @@ class IdentifierResourceEnd:
         if hab is None:
             raise falcon.HTTPNotFound(title=f"No AID {name} found")
 
-        ixn = body.get("ixn_rollback")
-        if ixn is None:
-            raise falcon.HTTPBadRequest(
-                title="invalid interaction",
-                description=f"required field 'ixn' missing from request",
-            )
+        serder = hab.kever.serder
 
-        sigs = body.get("sigs")
-        if sigs is None or len(sigs) == 0:
+        roll_sn = body.get("sn_rollback")
+        if roll_sn is None:
             raise falcon.HTTPBadRequest(
-                title="invalid interaction",
-                description=f"required field 'sigs' missing from request",
+                title="missing rollback sn",
+                description=f"required field 'sn_rollback' missing from request",
             )
-
-        # serder = serdering.SerderKERI(sad=ixn)
-        # sigers = [core.Siger(qb64=sig) for sig in sigs]
+        elif int(roll_sn) != serder.sn:
+            raise falcon.HTTPBadRequest(
+                title="invalid rollback sn",
+                description=f"rollback sn {roll_sn} does not match current sn {serder.sn}",
+            )
 
         if hab.kever.ilk not in (coring.Ilks.ixn,):
             raise kering.ValidationError(f"only interaction events can be rolled back, top event is "
                                             f"{hab.kever.ilk}")
 
-        serder = hab.kever.serder
+
         dgkey = dbing.dgKey(hab.pre, serder.saidb)
         wigs = agent.hby.db.getWigs(dgkey)
 
@@ -1040,7 +1037,8 @@ class IdentifierResourceEnd:
         agent.hby.db.reload()
         agent.hby.loadHabs()
 
-        print(f"Key event at {hab.kever.sn} rolledback, current state: {hab.kever.serder}")
+        print(f"Successfully rolledback key event at {serder.sn}: {serder.ked}")
+        print(f"New current key event at {hab.kever.sn}: {hab.kever.serder.ked}")
         # displaying.printIdentifier(agent.hby, hab.pre)
 
         op = agent.monitor.submit(

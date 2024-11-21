@@ -834,7 +834,15 @@ def test_identifier_collection_end(helpers):
         assert events[2]['ked'] == ixn_ser.ked
         
         # Now test interaction rollback
-        body = {'ixn_rollback': ixn_ser.ked,
+
+        # try to rollback a non-existent sn
+        body = {'sn_rollback': 99,
+                'sigs': sigers
+                }
+        res = client.simulate_post(path="/identifiers/randy1/events", body=json.dumps(body))
+        assert res.status_code == 400
+
+        body = {'sn_rollback': ixn_ser.ked['s'],
                 'sigs': sigers
                 }
         res = client.simulate_post(path="/identifiers/randy1/events", body=json.dumps(body))
