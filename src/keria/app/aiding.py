@@ -50,6 +50,8 @@ def loadEnds(app, agency, authn):
 
     rpyEscrowEnd = RpyEscrowCollectionEnd()
     app.add_route("/escrows/rpy", rpyEscrowEnd)
+    adminEscrowEnd = AdminEscrowCollectionEnd()
+    app.add_route("/escrows/clear/{name}/{escrow}", adminEscrowEnd)
 
     chaEnd = ChallengeCollectionEnd()
     app.add_route("/challenges", chaEnd)
@@ -975,6 +977,7 @@ class IdentifierResourceEnd:
             raise falcon.HTTPNotFound(title=f"No AID {name} found")
 
         serder = hab.kever.serder
+        seqner = coring.Number(num=serder.sn)
 
         roll_sn = body.get("sn_rollback")
         if roll_sn is None:
@@ -1006,6 +1009,7 @@ class IdentifierResourceEnd:
         pDgKey = dbing.dgKey(serder.preb, bytes(pdig))  # get message
         raw = agent.hby.db.getEvt(key=pDgKey)
         pserder = serdering.SerderKERI(raw=bytes(raw))
+        psaider = coring.Saider(qb64=pserder.said)
 
         dgkey = dbing.dgKey(serder.preb, serder.saidb)
         agent.hby.db.delEvt(dgkey)
@@ -1013,17 +1017,31 @@ class IdentifierResourceEnd:
         agent.hby.db.delWigs(dgkey)
         agent.hby.db.delSigs(dgkey)  # idempotent
         agent.hby.db.delDts(dgkey)  # idempotent do not change dts if already
-        agent.hby.db.delKes(dbing.snKey(serder.preb, serder.sn))
+
+        sn_key = dbing.snKey(serder.preb, serder.sn)
+        last = agent.hby.db.getKeLast(sn_key)  # idempotent
+        lastBytes = bytes(last)
+        agent.hby.db.delKes(sn_key)
+        rem_last = agent.hby.db.getKeLast(sn_key)
+        assert rem_last is None
+        agent.hby.db.gpse.rem(keys=(serder.pre,))
+
+        p_sn_Key = dbing.snKey(pserder.preb, pserder.sn)
+        plast = agent.hby.db.getKeLast(p_sn_Key)
+        plastBytes = bytes(plast)
+        assert lastBytes != plastBytes
+        
         agent.hby.db.delFe(dbing.snKey(serder.preb, serder.sn))
 
-        seqner = coring.Number(num=serder.sn - 1)
+        pseqner = coring.Number(num=pserder.sn)
         fner = coring.Number(numh=ked['f'])
         fner = coring.Number(num=fner.num - 1)
 
         # Update the only items in state that will change after rolling back an ixn
-        ked['s'] = seqner.numh
+        ked['s'] = pseqner.numh
         ked['et'] = pserder.ked['t']
-        ked['p'] = pserder.ked['p']
+        if 'p' in pserder.ked:
+            ked['p'] = pserder.ked['p']
         ked['d'] = pserder.said
         ked['f'] = fner.numh
         ked['dt'] = helping.nowIso8601()
@@ -1032,14 +1050,28 @@ class IdentifierResourceEnd:
         agent.hby.db.states.pin(keys=hab.pre,
                             val=helping.datify(basing.KeyStateRecord,
                                                 ked))
+        
+        plast = agent.hby.db.getKeLast(p_sn_Key)
+        plastBytes = bytes(plast)
 
         # Refresh all habs to reload this one
         agent.hby.db.reload()
         agent.hby.loadHabs()
 
-        print(f"Successfully rolledback key event at {serder.sn}: {serder.ked}")
-        print(f"New current key event at {hab.kever.sn}: {hab.kever.serder.ked}")
+        # print(f"{agent.pre}.{hab.pre} Removing TEL escrows for rollback KEL event at {serder.sn}: {serder.ked}")
+        # for registrar in agent.registrar.rgy.regs:
+        #     agent.rgy.reger.tmse.rem(keys=(registrar, seqner.qb64, registrar))
+        # print(f"{agent.pre}.{hab.pre} Adding back the group partial witness escrow {pseqner.sn}")
+        # agent.hby.db.gpwe.add(keys=(hab.pre,), val=(pseqner, psaider))
+
         # displaying.printIdentifier(agent.hby, hab.pre)
+
+        # for (pre,), (seqner, saider) in agent.hby.db.gpse.getItemIter():  # group partially signed escrow
+        #     snkey = dbing.snKey(pre, hab.kever.sn)
+        #     agent.hby.db.putKeLast(key=snkey)
+
+        print(f"{agent.pre}.{hab.pre} Successfully rolledback key event at {serder.sn}: {serder.ked}")
+        print(f"{agent.pre}.{hab.pre} New current key event at {hab.kever.sn}: {hab.kever.serder.ked}")
 
         op = agent.monitor.submit(
             serder.said,
@@ -1429,6 +1461,53 @@ class EndRoleResourceEnd:
     def on_delete(self, req, rep):
         pass
 
+class AdminEscrowCollectionEnd:
+
+    def on_delete(self, req, rep, name, escrow):
+        if not name:
+            raise falcon.HTTPBadRequest(description="AdminEscrowCollectionEnd on_delete name is required")
+        if not escrow:
+            raise falcon.HTTPBadRequest(description="AdminEscrowCollectionEnd on_delete escrow is required")
+
+        agent = req.context.agent
+        hab = agent.hby.habs[name] if name in agent.hby.habs else agent.hby.habByName(name)
+        if hab is None:
+            raise falcon.HTTPNotFound(
+                description=f"{name} is not a valid identifier name or prefix"
+            )
+        
+        all_escrows = (escrow == "all")
+
+        logger.info("%s.%s Removing escrows for %s", agent.pre, hab.pre, name)
+
+        if all_escrows or escrow == "tmse":
+            for (regk, snq, regd), (prefixer, seqner, saider) in agent.rgy.reger.tmse.getItemIter():
+                logger.info("%s.%s Clearing escrow TMSE %s. registry %s:%s", agent.pre, hab.pre, seqner.qb64, regk, regd)
+                agent.rgy.reger.tmse.rem(keys=(regk, snq, regd))
+        if all_escrows or escrow == "tae":
+            for (pre, snb, digb) in agent.rgy.reger.getTaeItemIter():
+                logger.info("%s.%s Clearing escrow TAE %s. registry %s:%s", agent.pre, hab.pre, pre, snb, digb)
+                agent.rgy.reger.delTae(dbing.snKey(pre, sn = int(snb, 16)))
+        if all_escrows or escrow == "mre":
+            for (cred_said,), dater in agent.rgy.reger.mre.getItemIter():
+                logger.info("%s.%s Clearing escrow MRE %s", agent.pre, hab.pre, cred_said)
+                agent.rgy.reger.mre.rem(cred_said)
+        if all_escrows or escrow == "pde":
+            for ekey, edig in agent.hby.db.getPseItemsNextIter():
+                pre, sn = dbing.splitKeySN(ekey)
+                logger.info("%s.%s Clearing escrow PSE %s.%s and dig %s", agent.pre, hab.pre, pre, sn, edig)
+                agent.hby.db.delPse(ekey, edig)
+                dgkey = dbing.dgKey(pre, bytes(edig))
+                agent.hby.db.delPde(dgkey)  # remove escrow if any
+            key = b''  # both start same. when not same means escrows found
+            for ekey, edig in agent.hby.db.getPseItemsNextIter(key=key):
+                pre, sn = dbing.splitKeySN(ekey)
+                logger.info("%s.%s Clearing escrow PSE %s.%s and dig %s", agent.pre, hab.pre, pre, sn, edig)
+                agent.hby.db.delPse(ekey, edig)
+        if all_escrows or escrow == "ooo":
+            for (pre, sn) in agent.hby.db.getOoeItemsNextIter():
+                logger.info("%s.%s Clearing escrow OOE %s.%s", agent.pre, hab.pre, pre, sn)
+                agent.hby.db.delOoe(pre, sn)
 
 class RpyEscrowCollectionEnd:
 

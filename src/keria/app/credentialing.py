@@ -457,19 +457,25 @@ class CredentialVerificationCollectionEnd:
         agent = req.context.agent
         body = req.get_media()
 
-        try:
-            creder = serdering.SerderACDC(sad=httping.getRequiredParam(body, "acdc"))
-            iserder = serdering.SerderKERI(sad=httping.getRequiredParam(body, "iss"))
-        except (kering.ValidationError, json.decoder.JSONDecodeError) as e:
-            rep.status = falcon.HTTP_400
-            rep.text = e.args[0]
-            return
+        if "cesr" in body and "acdc" not in body and "iss" not in body:
+            agent.parser.ims.extend(body["cesr"])
+        elif "acdc" in body and "iss" in body:
+            try:
+                creder = serdering.SerderACDC(sad=httping.getRequiredParam(body, "acdc"))
+                iserder = serdering.SerderKERI(sad=httping.getRequiredParam(body, "iss"))
+            except (kering.ValidationError, json.decoder.JSONDecodeError) as e:
+                rep.status = falcon.HTTP_400
+                rep.text = e.args[0]
+                return
 
-        prefixer = coring.Prefixer(qb64=iserder.pre)
-        seqner = coring.Seqner(sn=iserder.sn)
-        saider = coring.Saider(qb64=iserder.said)
+            prefixer = coring.Prefixer(qb64=iserder.pre)
+            seqner = coring.Seqner(sn=iserder.sn)
+            saider = coring.Saider(qb64=iserder.said)
 
-        agent.parser.ims.extend(signing.serialize(creder, prefixer, seqner, saider))
+            agent.parser.ims.extend(signing.serialize(creder, prefixer, seqner, saider))
+        else:
+            raise falcon.HTTPBadRequest(description="Credential verification requires body with either: cesr OR (ACDC and iss) params")
+        
         op = agent.monitor.submit(creder.said, longrunning.OpTypes.credential,
                                   metadata=dict(ced=creder.sad))
         rep.status = falcon.HTTP_202
@@ -1005,7 +1011,7 @@ class Registrar:
             self.rgy.reger.tpwe.add(keys=(registry.regk, rseq.qb64), val=(hab.kever.prefixer, seqner, saider))
 
         else:
-            print("Waiting for TEL registry vcp event mulisig anchoring event")
+            print(f"{self.agentHab.pre}.{hab.pre} Waiting for TEL registry vcp event mulisig anchoring event")
             self.rgy.reger.tmse.add(keys=(registry.regk, rseq.qb64, registry.regd), val=(prefixer, seqner, saider))
 
     def issue(self, regk, iserder, anc):
@@ -1030,7 +1036,7 @@ class Registrar:
             saider = coring.Saider(qb64=hab.kever.serder.said)
             registry.anchorMsg(pre=vcid, regd=iserder.said, seqner=seqner, saider=saider)
 
-            print("Waiting for TEL event witness receipts")
+            print(f"{self.agentHab.pre}.{hab.pre} Waiting for TEL event witness receipts")
             self.witDoer.msgs.append(dict(pre=hab.pre, sn=seqner.sn))
             self.rgy.reger.tpwe.add(keys=(vcid, rseq.qb64), val=(hab.kever.prefixer, seqner, saider))
             return vcid, rseq.sn
@@ -1043,7 +1049,7 @@ class Registrar:
             seqner = coring.Seqner(sn=sn)
             saider = coring.Saider(qb64=said)
 
-            print(f"Waiting for TEL iss event mulisig anchoring event {seqner.sn}")
+            print(f"{self.agentHab.pre}.{hab.pre} Waiting for TEL iss event mulisig anchoring event {sn}: w/ anc said={said}")
             self.rgy.reger.tmse.add(keys=(vcid, rseq.qb64, iserder.said), val=(prefixer, seqner, saider))
             return vcid, rseq.sn
 
@@ -1069,7 +1075,7 @@ class Registrar:
             saider = coring.Saider(qb64=hab.kever.serder.said)
             registry.anchorMsg(pre=vcid, regd=rserder.said, seqner=seqner, saider=saider)
 
-            print("Waiting for TEL event witness receipts")
+            print(f"{self.agentHab.pre}.{hab.pre} Waiting for TEL event witness receipts")
             self.witDoer.msgs.append(dict(pre=hab.pre, sn=seqner.sn))
 
             self.rgy.reger.tpwe.add(keys=(vcid, rseq.qb64), val=(hab.kever.prefixer, seqner, saider))
@@ -1085,7 +1091,7 @@ class Registrar:
 
             self.counselor.start(prefixer=prefixer, seqner=seqner, saider=saider, ghab=hab)
 
-            print(f"Waiting for TEL rev event mulisig anchoring event {seqner.sn}")
+            print(f"{self.agentHab.pre}.{hab.pre} Waiting for TEL rev event mulisig anchoring event {seqner.sn}")
             self.rgy.reger.tmse.add(keys=(vcid, rseq.qb64, rserder.said), val=(prefixer, seqner, saider))
             return vcid, rseq.sn
 
@@ -1182,7 +1188,7 @@ class Registrar:
             for msg in self.rgy.reger.clonePreIter(pre=regk, fn=rseq.sn):
                 tevt.extend(msg)
 
-            print(f"Sending TEL events to witnesses")
+            print(f"{self.agentHab.pre}.{prefixer.qb64} Sending TEL events to witnesses")
             # Fire and forget the TEL event to the witnesses.  Consumers will have to query
             # to determine when the Witnesses have received the TEL events.
             self.witPub.msgs.append(dict(pre=prefixer.qb64, msg=tevt))

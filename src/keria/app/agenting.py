@@ -172,6 +172,9 @@ class Agency(doing.DoDoer):
                                          temp=False,
                                          reopen=True,
                                          clear=False)
+            logger.info("Loaded config file %s at %s", self.configFile, self.configDir)
+            for key, value in self.cf.get().items():
+                logger.info("Config key %s value %s", key, value)
 
         self.agents = dict()
 
