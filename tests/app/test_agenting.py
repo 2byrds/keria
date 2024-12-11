@@ -5,6 +5,7 @@ keria.app.agenting module
 
 Testing the Mark II Agent
 """
+from base64 import b64encode
 import json
 import os
 import shutil
@@ -63,6 +64,8 @@ def test_load_ends(helpers):
         assert isinstance(end, agenting.KeyEventCollectionEnd)
         (end, *_) = app._router.find("/queries")
         assert isinstance(end, agenting.QueryCollectionEnd)
+        (end, *_) = app._router.find("/config")
+        assert isinstance(end, agenting.ConfigResourceEnd)
 
 
 def test_load_tocks_config(helpers):
@@ -84,6 +87,9 @@ def test_load_tocks_config(helpers):
                 "dt": "2022-01-20T12:57:59.823350+00:00",
                 "curls": ["http://127.0.0.1:3902/"]
             },
+            "iurls": [
+                "http://127.0.0.1:5642/oobi/BBilc4-L3tFUnfM_wJr4S4OJanAv_VmF_dJNN6vkf2Ha/controller&tag=witness"
+            ],
             "tocks": {
                 "initer": 0.0,
                 "escrower": 1.0
@@ -197,7 +203,53 @@ def test_agency():
         assert caid not in agency.agents
         assert len(agent.doers) == 0
 
-def test_boot_ends(helpers):
+def test_agency_without_config_file():
+    salt = b'0123456789abcdef'
+    salter = core.Salter(raw=salt)
+    cf = configing.Configer(name="keria", headDirPath=SCRIPTS_DIR, temp=True, reopen=True, clear=False)
+
+    with habbing.openHby(name="keria", salt=salter.qb64, temp=True, cf=cf) as hby:
+        hby.makeHab(name="test")
+
+        agency = agenting.Agency(name="agency", base="", bran=None, temp=True, configFile=None, configDir=SCRIPTS_DIR)
+        assert agency.cf is None
+
+        doist = doing.Doist(limit=1.0, tock=0.03125, real=True)
+        doist.extend(doers=[agency])
+
+        # Ensure we can still create agent
+        caid = "ELI7pg979AdhmvrjDeam2eAO2SR5niCgnjAJXJHtJose"
+        agent = agency.create(caid, salt=salter.qb64)
+        assert agent.pre == "EIAEKYpTygdBtFHBrHKWeh0aYCdx0ZJqZtzQLFnaDB2b"
+
+def test_agency_with_urls_from_arguments():
+    salt = b'0123456789abcdef'
+    salter = core.Salter(raw=salt)
+    cf = configing.Configer(name="keria", headDirPath=SCRIPTS_DIR, temp=True, reopen=True, clear=False)
+
+    with habbing.openHby(name="keria", salt=salter.qb64, temp=True, cf=cf) as hby:
+        hby.makeHab(name="test")
+
+        curls = ["http://example.com:3902/"]
+        iurls = ["http://example.com:5432/oobi"]
+        durls = ["http://example.com:7723/oobi"]
+        agency = agenting.Agency(name="agency", base="", bran=None, temp=True, configDir=SCRIPTS_DIR, curls=curls, iurls=iurls, durls=durls)
+        assert agency.cf is None
+
+        doist = doing.Doist(limit=1.0, tock=0.03125, real=True)
+        doist.extend(doers=[agency])
+
+        # Ensure we can still create agent
+        caid = "ELI7pg979AdhmvrjDeam2eAO2SR5niCgnjAJXJHtJose"
+        agent = agency.create(caid, salt=salter.qb64)
+        assert agent.pre == "EIAEKYpTygdBtFHBrHKWeh0aYCdx0ZJqZtzQLFnaDB2b"
+
+        assert agent.hby.cf is not None
+        assert agent.hby.cf.get()[f"agent-{caid}"]["curls"] == curls
+        assert agent.hby.cf.get()["iurls"] == iurls
+        assert agent.hby.cf.get()["durls"] == durls
+
+def test_unprotected_boot_ends(helpers):
     agency = agenting.Agency(name="agency", bran=None, temp=True)
     doist = doing.Doist(limit=1.0, tock=0.03125, real=True)
     doist.enter(doers=[agency])
@@ -230,6 +282,85 @@ def test_boot_ends(helpers):
         'description': 'agent for controller EK35JRNdfVkO4JwhXaSTdV4qzB_ibk_tGJmSVcY4pZqx already exists'
     }
 
+def test_protected_boot_ends(helpers):
+    agency = agenting.Agency(name="agency", bran=None, temp=True)
+    doist = doing.Doist(limit=1.0, tock=0.03125, real=True)
+    doist.enter(doers=[agency])
+
+    serder, sigers = helpers.controller()
+    assert serder.pre == helpers.controllerAID
+
+    app = falcon.App()
+    client = testing.TestClient(app)
+
+    username = "user"
+    password = "secret"
+
+    bootEnd = agenting.BootEnd(agency, username=username, password=password)
+    app.add_route("/boot", bootEnd)
+
+    body = dict(
+        icp=serder.ked,
+        sig=sigers[0].qb64,
+        salty=dict(
+            stem='signify:aid', pidx=0, tier='low', sxlt='OBXYZ',
+            icodes=[MtrDex.Ed25519_Seed], ncodes=[MtrDex.Ed25519_Seed]
+        )
+    )
+
+    rep = client.simulate_post("/boot", body=json.dumps(body).encode("utf-8"))
+    assert rep.status_code == 401
+
+    rep = client.simulate_post("/boot", body=json.dumps(body).encode("utf-8"), headers={"Authorization": "Something test"})
+    assert rep.status_code == 401
+
+    rep = client.simulate_post("/boot", body=json.dumps(body).encode("utf-8"), headers={"Authorization": "Basic user:secret"})
+    assert rep.status_code == 401
+
+    rep = client.simulate_post("/boot", body=json.dumps(body).encode("utf-8"), headers={"Authorization": f"Basic {b64encode(b'test:secret').decode('utf-8')}"} )
+    assert rep.status_code == 401
+
+    rep = client.simulate_post("/boot", body=json.dumps(body).encode("utf-8"), headers={"Authorization": f"Basic {b64encode(b'user').decode('utf-8')}"} )
+    assert rep.status_code == 401
+
+    rep = client.simulate_post("/boot", body=json.dumps(body).encode("utf-8"), headers={"Authorization": f"Basic {b64encode(b'user:test').decode('utf-8')}"} )
+    assert rep.status_code == 401
+
+    authorization = f"Basic {b64encode(b'user:secret').decode('utf-8')}"
+    rep = client.simulate_post("/boot", body=json.dumps(body).encode("utf-8"), headers={"Authorization": authorization})
+    assert rep.status_code == 202
+
+def test_misconfigured_protected_boot_ends(helpers):
+    agency = agenting.Agency(name="agency", bran=None, temp=True)
+    doist = doing.Doist(limit=1.0, tock=0.03125, real=True)
+    doist.enter(doers=[agency])
+
+    serder, sigers = helpers.controller()
+    assert serder.pre == helpers.controllerAID
+
+    app = falcon.App()
+    client = testing.TestClient(app)
+
+    # No password set, should return 401
+    bootEnd = agenting.BootEnd(agency, username="user", password=None)
+    app.add_route("/boot", bootEnd)
+
+    body = dict(
+        icp=serder.ked,
+        sig=sigers[0].qb64,
+        salty=dict(
+            stem='signify:aid', pidx=0, tier='low', sxlt='OBXYZ',
+            icodes=[MtrDex.Ed25519_Seed], ncodes=[MtrDex.Ed25519_Seed]
+        )
+    )
+
+    authorization = f"Basic {b64encode(b'user').decode('utf-8')}"
+    rep = client.simulate_post("/boot", body=json.dumps(body).encode("utf-8"), headers={"Authorization": authorization})
+    assert rep.status_code == 401
+
+    authorization = f"Basic {b64encode(b'user:secret').decode('utf-8')}"
+    rep = client.simulate_post("/boot", body=json.dumps(body).encode("utf-8"), headers={"Authorization": authorization})
+    assert rep.status_code == 401
 
 def test_witnesser(helpers):
     salt = b'0123456789abcdef'
@@ -356,6 +487,9 @@ def test_oobi_ends(seeder, helpers):
         b = json.dumps(data).encode("utf-8")
         result = client.simulate_post(path="/oobi", body=b)
         assert result.status == falcon.HTTP_501
+
+        # initiated from keria.json config file (iurls), so remove
+        oobiery.hby.db.oobis.rem(keys=("http://127.0.0.1:5642/oobi/BBilc4-L3tFUnfM_wJr4S4OJanAv_VmF_dJNN6vkf2Ha/controller&tag=witness",))
 
         data = dict(url="http://127.0.0.1:5644/oobi/E6Dqo6tHmYTuQ3Lope4mZF_4hBoGJl93cBHRekr_iD_A/witness/")
         b = json.dumps(data).encode("utf-8")
@@ -704,3 +838,13 @@ def test_submitter(seeder, helpers):
                 },
             )
         )
+
+
+def test_config_ends(helpers):
+    with helpers.openKeria() as (agency, agent, app, client):
+        configEnd = agenting.ConfigResourceEnd()
+        app.add_route("/config", configEnd)
+        res = client.simulate_get(path="/config")
+        assert res.status == falcon.HTTP_200
+        assert res.json == {'iurls':
+                            ['http://127.0.0.1:5642/oobi/BBilc4-L3tFUnfM_wJr4S4OJanAv_VmF_dJNN6vkf2Ha/controller&tag=witness']}
